@@ -24,13 +24,41 @@ internal static class SampleImages
 
     public static byte[] TruncatedJpeg() => new byte[] { 0xFF, 0xD8, 0xFF };
 
-    public static byte[] Gif(int width, int height) =>
+    public static byte[] Gif(int width, int height) => GifWithFrames(width, height, frameCount: 1);
+
+    public static byte[] GifWithFrames(int width, int height, int frameCount)
+    {
+        var builder = new ByteBuilder()
+            .Ascii("GIF89a")
+            .UInt16LE(width)
+            .UInt16LE(height)
+            .Bytes(0, 0, 0); // packed fields (no global color table), bg color index, aspect ratio
+
+        for (var i = 0; i < frameCount; i++)
+        {
+            builder
+                .Bytes(ImageDescriptorIntroducer)
+                .UInt16LE(0).UInt16LE(0) // left, top
+                .UInt16LE(width).UInt16LE(height)
+                .Bytes(0) // packed fields (no local color table)
+                .Bytes(2) // LZW minimum code size
+                .Bytes(1, 0x00, 0); // one data sub-block, then the terminator
+        }
+
+        builder.Bytes(GifTrailer);
+        return builder.ToArray();
+    }
+
+    public static byte[] GifWithoutFrames(int width, int height) =>
         new ByteBuilder()
             .Ascii("GIF89a")
             .UInt16LE(width)
             .UInt16LE(height)
             .Bytes(0, 0, 0)
             .ToArray();
+
+    private const byte ImageDescriptorIntroducer = 0x2C;
+    private const byte GifTrailer = 0x3B;
 
     public static byte[] Bmp(int width, int height, int bitCount = 24) =>
         new ByteBuilder()
@@ -96,17 +124,51 @@ internal static class SampleImages
             .UInt32LE(22)
             .ToArray();
 
-    public static byte[] Tiff(int width, int height, int bitDepth = 8)
+    public static byte[] Tiff(int width, int height, int bitDepth = 8) =>
+        TiffWithPages(width, height, bitDepth, pageCount: 1);
+
+    public static byte[] TiffWithPages(int width, int height, int bitDepth, int pageCount)
     {
+        const int entryCount = 3;
+        const int ifdSize = 2 + entryCount * 12 + 4; // count + entries + next-IFD offset
+        const int firstIfdOffset = 8;
+
         var builder = new ByteBuilder()
             .Ascii("II")
             .Bytes(0x2A, 0x00)
-            .UInt32LE(8)
-            .UInt16LE(3);
+            .UInt32LE(firstIfdOffset);
+
+        for (var page = 0; page < pageCount; page++)
+        {
+            builder.UInt16LE(entryCount);
+            AddShortEntry(builder, 256, width);
+            AddShortEntry(builder, 257, height);
+            AddShortEntry(builder, 258, bitDepth);
+
+            var isLast = page == pageCount - 1;
+            var nextOffset = isLast ? 0u : (uint)(firstIfdOffset + (page + 1) * ifdSize);
+            builder.UInt32LE(nextOffset);
+        }
+
+        return builder.ToArray();
+    }
+
+    public static byte[] TiffWithSelfReferencingIfd(int width, int height, int bitDepth)
+    {
+        const int entryCount = 3;
+        const int firstIfdOffset = 8;
+
+        var builder = new ByteBuilder()
+            .Ascii("II")
+            .Bytes(0x2A, 0x00)
+            .UInt32LE(firstIfdOffset)
+            .UInt16LE(entryCount);
 
         AddShortEntry(builder, 256, width);
         AddShortEntry(builder, 257, height);
         AddShortEntry(builder, 258, bitDepth);
+
+        builder.UInt32LE(firstIfdOffset); // next-IFD offset points back at the same IFD
 
         return builder.ToArray();
     }
@@ -168,4 +230,54 @@ internal static class SampleImages
             .Zeros(128)
             .Ascii("DICM")
             .ToArray();
+
+    public const string ImplicitVrLittleEndian = "1.2.840.10008.1.2";
+    public const string ExplicitVrLittleEndian = "1.2.840.10008.1.2.1";
+    public const string ExplicitVrBigEndian = "1.2.840.10008.1.2.2";
+
+    public static byte[] DicomWithPixelInfo(
+        int rows,
+        int columns,
+        int bitsAllocated,
+        string transferSyntax = ExplicitVrLittleEndian)
+    {
+        var builder = new ByteBuilder().Zeros(128).Ascii("DICM");
+        AppendTransferSyntax(builder, transferSyntax);
+
+        if (transferSyntax == ImplicitVrLittleEndian)
+        {
+            AppendImplicitUShort(builder, 0x0028, 0x0010, rows);
+            AppendImplicitUShort(builder, 0x0028, 0x0011, columns);
+            AppendImplicitUShort(builder, 0x0028, 0x0100, bitsAllocated);
+        }
+        else if (transferSyntax == ExplicitVrBigEndian)
+        {
+            AppendExplicitUShortBigEndian(builder, 0x0028, 0x0010, rows);
+            AppendExplicitUShortBigEndian(builder, 0x0028, 0x0011, columns);
+            AppendExplicitUShortBigEndian(builder, 0x0028, 0x0100, bitsAllocated);
+        }
+        else
+        {
+            AppendExplicitUShort(builder, 0x0028, 0x0010, rows);
+            AppendExplicitUShort(builder, 0x0028, 0x0011, columns);
+            AppendExplicitUShort(builder, 0x0028, 0x0100, bitsAllocated);
+        }
+
+        return builder.ToArray();
+    }
+
+    private static void AppendTransferSyntax(ByteBuilder builder, string uid)
+    {
+        var padded = uid.Length % 2 == 0 ? uid : uid + "\0";
+        builder.UInt16LE(0x0002).UInt16LE(0x0010).Ascii("UI").UInt16LE(padded.Length).Ascii(padded);
+    }
+
+    private static void AppendExplicitUShort(ByteBuilder builder, int group, int element, int value) =>
+        builder.UInt16LE(group).UInt16LE(element).Ascii("US").UInt16LE(2).UInt16LE(value);
+
+    private static void AppendExplicitUShortBigEndian(ByteBuilder builder, int group, int element, int value) =>
+        builder.UInt16BE(group).UInt16BE(element).Ascii("US").UInt16BE(2).UInt16BE(value);
+
+    private static void AppendImplicitUShort(ByteBuilder builder, int group, int element, int value) =>
+        builder.UInt16LE(group).UInt16LE(element).UInt32LE(2).UInt16LE(value);
 }

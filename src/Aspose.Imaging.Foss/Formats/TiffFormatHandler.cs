@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using Aspose.Imaging.Foss.Internal;
 
@@ -5,6 +6,11 @@ namespace Aspose.Imaging.Foss.Formats;
 
 internal sealed class TiffFormatHandler : IFormatHandler
 {
+    // Sanity cap on the number of IFDs walked, so a malformed/adversarial IFD chain
+    // (e.g. one that keeps pointing forward into fabricated offsets) can't turn a
+    // probe into an unbounded loop.
+    private const int MaxIfds = 65536;
+
     public ImageFormat Format => ImageFormat.Tiff;
     public int SignatureLength => 4;
 
@@ -24,40 +30,63 @@ internal sealed class TiffFormatHandler : IFormatHandler
         var bigEndian = header[0] == 'M';
         var ifdOffset = EndianReader.ReadUInt32(header, 4, bigEndian);
 
-        stream.Seek(ifdOffset, SeekOrigin.Begin);
-        var countBuf = new byte[2];
-        stream.ReadFully(countBuf, 0, 2);
-        var entryCount = EndianReader.ReadUInt16(countBuf, 0, bigEndian);
-
         int? width = null;
         int? height = null;
         int? bitDepth = null;
+        var frameCount = 0;
 
+        var visitedOffsets = new HashSet<uint>();
+        var countBuf = new byte[2];
         var entry = new byte[12];
-        for (var i = 0; i < entryCount; i++)
-        {
-            stream.ReadFully(entry, 0, entry.Length);
-            var tag = EndianReader.ReadUInt16(entry, 0, bigEndian);
-            var type = EndianReader.ReadUInt16(entry, 2, bigEndian);
+        var nextOffsetBuf = new byte[4];
 
-            switch (tag)
+        while (ifdOffset != 0 && visitedOffsets.Add(ifdOffset) && frameCount < MaxIfds)
+        {
+            stream.Seek(ifdOffset, SeekOrigin.Begin);
+            if (stream.ReadFully(countBuf, 0, 2) < 2)
+                break;
+
+            var entryCount = EndianReader.ReadUInt16(countBuf, 0, bigEndian);
+            var isFirstIfd = frameCount == 0;
+
+            var readOk = true;
+            for (var i = 0; i < entryCount; i++)
             {
-                case 256:
-                    width = ReadIfdValue(entry, type, bigEndian);
+                if (stream.ReadFully(entry, 0, entry.Length) < entry.Length)
+                {
+                    readOk = false;
                     break;
-                case 257:
-                    height = ReadIfdValue(entry, type, bigEndian);
-                    break;
-                case 258:
-                    bitDepth = ReadIfdValue(entry, type, bigEndian);
-                    break;
+                }
+
+                if (!isFirstIfd)
+                    continue;
+
+                var tag = EndianReader.ReadUInt16(entry, 0, bigEndian);
+                var type = EndianReader.ReadUInt16(entry, 2, bigEndian);
+
+                switch (tag)
+                {
+                    case 256:
+                        width = ReadIfdValue(entry, type, bigEndian);
+                        break;
+                    case 257:
+                        height = ReadIfdValue(entry, type, bigEndian);
+                        break;
+                    case 258:
+                        bitDepth = ReadIfdValue(entry, type, bigEndian);
+                        break;
+                }
             }
 
-            if (width.HasValue && height.HasValue && bitDepth.HasValue)
+            frameCount++;
+
+            if (!readOk || stream.ReadFully(nextOffsetBuf, 0, 4) < 4)
                 break;
+
+            ifdOffset = EndianReader.ReadUInt32(nextOffsetBuf, 0, bigEndian);
         }
 
-        return new ImageInfo(Format, width, height, bitDepth, frameCount: 1);
+        return new ImageInfo(Format, width, height, bitDepth, frameCount == 0 ? null : frameCount);
     }
 
     // For SHORT/LONG types with a count of 1, TIFF stores the value left-justified in the entry's 4-byte value field.

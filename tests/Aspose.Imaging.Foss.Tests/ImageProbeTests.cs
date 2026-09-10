@@ -45,6 +45,29 @@ public class ImageProbeTests
         Assert.Equal(ImageFormat.Gif, info.Format);
         Assert.Equal(320, info.Width);
         Assert.Equal(240, info.Height);
+        Assert.Equal(1, info.FrameCount);
+    }
+
+    [Fact]
+    public void Gif_MultiFrame_ReportsFrameCount()
+    {
+        var info = ImageProbe.Probe(SampleImages.GifWithFrames(64, 48, frameCount: 5));
+
+        Assert.Equal(ImageFormat.Gif, info.Format);
+        Assert.Equal(64, info.Width);
+        Assert.Equal(48, info.Height);
+        Assert.Equal(5, info.FrameCount);
+    }
+
+    [Fact]
+    public void Gif_TruncatedAfterScreenDescriptor_ReportsDimensionsButNoFrameCount()
+    {
+        var info = ImageProbe.Probe(SampleImages.GifWithoutFrames(64, 48));
+
+        Assert.Equal(ImageFormat.Gif, info.Format);
+        Assert.Equal(64, info.Width);
+        Assert.Equal(48, info.Height);
+        Assert.Null(info.FrameCount);
     }
 
     [Fact]
@@ -115,6 +138,27 @@ public class ImageProbeTests
         Assert.Equal(1600, info.Width);
         Assert.Equal(1200, info.Height);
         Assert.Equal(8, info.BitDepth);
+        Assert.Equal(1, info.FrameCount);
+    }
+
+    [Fact]
+    public void Tiff_MultiPage_ReportsFrameCountFromIfdChain()
+    {
+        var info = ImageProbe.Probe(SampleImages.TiffWithPages(800, 600, 8, pageCount: 4));
+
+        Assert.Equal(ImageFormat.Tiff, info.Format);
+        Assert.Equal(800, info.Width);
+        Assert.Equal(600, info.Height);
+        Assert.Equal(4, info.FrameCount);
+    }
+
+    [Fact]
+    public void Tiff_SelfReferencingIfd_DoesNotLoopForever()
+    {
+        var info = ImageProbe.Probe(SampleImages.TiffWithSelfReferencingIfd(320, 240, 8));
+
+        Assert.Equal(ImageFormat.Tiff, info.Format);
+        Assert.Equal(1, info.FrameCount);
     }
 
     [Fact]
@@ -149,13 +193,51 @@ public class ImageProbeTests
     }
 
     [Fact]
-    public void Dicom_DetectsFormatButDimensionsAreNotYetSupported()
+    public void Dicom_WithoutDataSet_ReportsFormatOnly()
     {
         var info = ImageProbe.Probe(SampleImages.Dicom());
 
         Assert.Equal(ImageFormat.Dicom, info.Format);
         Assert.Null(info.Width);
         Assert.Null(info.Height);
+    }
+
+    [Theory]
+    [InlineData(SampleImages.ExplicitVrLittleEndian)]
+    [InlineData(SampleImages.ImplicitVrLittleEndian)]
+    [InlineData(SampleImages.ExplicitVrBigEndian)]
+    public void Dicom_ReportsPixelDimensionsForCommonTransferSyntaxes(string transferSyntax)
+    {
+        var info = ImageProbe.Probe(SampleImages.DicomWithPixelInfo(rows: 512, columns: 256, bitsAllocated: 16, transferSyntax));
+
+        Assert.Equal(ImageFormat.Dicom, info.Format);
+        Assert.Equal(256, info.Width);
+        Assert.Equal(512, info.Height);
+        Assert.Equal(16, info.BitDepth);
+    }
+
+    [Fact]
+    public void Dicom_TruncatedDataSet_DegradesGracefullyInsteadOfThrowing()
+    {
+        var full = SampleImages.DicomWithPixelInfo(rows: 512, columns: 256, bitsAllocated: 16);
+        var truncated = full[..^3];
+
+        var info = ImageProbe.Probe(truncated);
+
+        Assert.Equal(ImageFormat.Dicom, info.Format);
+    }
+
+    [Fact]
+    public void Gif_TruncatedMidFrameData_DegradesGracefullyInsteadOfThrowing()
+    {
+        var full = SampleImages.GifWithFrames(64, 48, frameCount: 3);
+        var truncated = full[..^2];
+
+        var info = ImageProbe.Probe(truncated);
+
+        Assert.Equal(ImageFormat.Gif, info.Format);
+        Assert.Equal(64, info.Width);
+        Assert.Equal(48, info.Height);
     }
 
     [Fact]

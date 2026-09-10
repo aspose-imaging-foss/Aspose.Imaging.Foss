@@ -30,17 +30,22 @@ for a full-featured commercial SDK covering all of these formats and more.
 |--------|:------:|:---------------:|:---------:|:-----------:|
 | PNG    | ✅ | ✅ | ✅ | ✅ |
 | JPEG   | ✅ | ✅ | ✅ | — |
-| GIF    | ✅ | ✅ | — | — |
+| GIF    | ✅ | ✅ | — | ✅ |
 | BMP    | ✅ | ✅ | ✅ | — |
 | WebP (lossy / lossless / extended) | ✅ | ✅ | — | — |
 | ICO    | ✅ | ✅ | ✅ | ✅ |
-| TIFF   | ✅ | ✅ | ✅ | — |
+| TIFF   | ✅ | ✅ | ✅ | ✅ |
 | PSD    | ✅ | ✅ | ✅ | — |
 | EMF    | ✅ | ✅ (from bounds) | — | — |
 | WMF (placeable) | ✅ | ✅ (assumes 96 DPI) | — | — |
-| DICOM  | ✅ | planned | planned | — |
+| DICOM  | ✅ | ✅ (Rows/Columns) | ✅ (BitsAllocated) | — |
 
-Planned: multi-page TIFF/GIF frame counts, DICOM pixel dimensions, CDR, DjVu.
+DICOM parsing covers Implicit VR Little Endian and Explicit VR Little/Big Endian transfer
+syntaxes (including the common compressed ones, whose non-pixel elements are Explicit VR
+Little Endian); it stops rather than guesses if it hits a sequence or encapsulated pixel data
+with an undefined length before finding Rows/Columns/BitsAllocated.
+
+Planned: CDR, DjVu.
 
 ## Install
 
