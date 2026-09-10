@@ -16,8 +16,8 @@
     <Description>Zero-dependency image format detection and header probing for .NET. Identifies image formats and reads dimensions/basic metadata without a full pixel decode.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>image;format;detection;metadata;probe;dotnet</PackageTags>
-    <RepositoryUrl>https://github.com/aspose-imaging/Aspose.Imaging.Foss</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/aspose-imaging/Aspose.Imaging.Foss</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/aspose-imaging-foss/Aspose.Imaging.Foss</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/aspose-imaging-foss/Aspose.Imaging.Foss</PackageProjectUrl>
   </PropertyGroup>
 
 </Project>

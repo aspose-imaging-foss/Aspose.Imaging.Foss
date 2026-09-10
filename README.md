@@ -1,5 +1,9 @@
 # Aspose.Imaging.Foss
 
+[![CI](https://github.com/aspose-imaging-foss/Aspose.Imaging.Foss/actions/workflows/ci.yml/badge.svg)](https://github.com/aspose-imaging-foss/Aspose.Imaging.Foss/actions/workflows/ci.yml)
+[![NuGet](https://img.shields.io/nuget/v/Aspose.Imaging.Foss.svg)](https://www.nuget.org/packages/Aspose.Imaging.Foss)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Zero-dependency image format detection and header probing for .NET.
 
 `Aspose.Imaging.Foss` identifies an image's format and reads its basic properties
